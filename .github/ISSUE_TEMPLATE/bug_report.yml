@@ -1,0 +1,38 @@
+name: Bug report
+description: Report a problem with Realtime processing or video export.
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: App version, macOS version, Apple chip and memory size.
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Workspace
+      options:
+        - Realtime
+        - Upload Video
+        - Build or launch
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the processing size, profile and relevant settings.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Remove personal paths and private content. Do not attach model weights or DLL files.

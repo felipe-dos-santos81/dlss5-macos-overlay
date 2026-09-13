@@ -1,0 +1,48 @@
+# Build products and local model data
+.build/
+.swiftpm/
+/Models/
+/dist/
+/local-runtime/
+*.app/
+*.dSYM/
+*.xcresult/
+*.metallib
+*.dll
+*.dylib
+*.safetensors
+*.dlss/
+*.dlssmodel/
+*.pt
+*.pth
+*.onnx
+
+# Local captures, exports and diagnostics
+/recordings/
+/exports/
+/captures/
+/diagnostics/
+/tmp/
+*.log
+
+# Python and editor state
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.DS_Store
+._*
+xcuserdata/
+.idea/
+.vscode/
+
+# Machine-local configuration and signing material
+.env
+.env.*
+*.pem
+*.p12
+*.pfx
+*.mobileprovision
+*.keychain-db

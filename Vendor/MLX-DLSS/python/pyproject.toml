@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlxdlss"
+version = "0.1.0"
+description = "PyTorch inference pipeline and bring-your-own-DLL weight tooling for the recovered neural-rendering transformer"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = ["numpy", "torch>=2.1", "safetensors>=0.4", "pillow"]
+
+[project.optional-dependencies]
+coreml = ["coremltools>=8"]
+video = ["opencv-python-headless>=4.8"]
+web = ["nicegui>=3.0", "pydantic>=2"]
+
+[project.scripts]
+mlxdlss-torch = "mlxdlss.cli:main"
+mlxdlss-weights = "mlxdlss.tools.cli:main"
+mlxdlss-video = "mlxdlss.video_cli:main"
+mlxdlss-web = "mlxdlss.web.app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mlxdlss*"]
+
+[tool.setuptools.package-data]
+mlxdlss = ["*.json"]

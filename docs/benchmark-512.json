@@ -1,0 +1,13 @@
+{
+  "firstFrameMAE" : 0.025257196602921004,
+  "frames" : 36,
+  "gpu" : "Apple M4 Max",
+  "identityMAE" : 0,
+  "notes" : "Includes downscale, optical flow, MLX NR and native composite; excludes capture and display. No NVIDIA parity assertion.",
+  "processingWidth" : 512,
+  "source" : "synthetic 960x540 translating pattern",
+  "temporal" : true,
+  "warmAverageMilliseconds" : 29.975279166925855,
+  "warmProcessingFPS" : 33.360823578363224,
+  "warmupFrames" : 6
+}

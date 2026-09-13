@@ -1,0 +1,162 @@
+"""Effect models: what a job applies, in order, and what the current backend can do."""
+from __future__ import annotations
+
+from typing import Annotated, Literal, Union
+
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+
+from ..features import PROFILES
+
+PROFILE_NAMES = tuple(PROFILES)
+
+
+class NeuralRender(BaseModel):
+    """The neural-rendering transformer (detail, colour, tone) on every frame."""
+
+    kind: Literal["nr"] = "nr"
+    profile: str = "standard"
+    processing_scale: float = Field(1.0, ge=1.0, le=4.0)
+    detail_strength: float = Field(1.0, ge=0.0, le=8.0)
+    colour_strength: float = Field(1.0, ge=0.0, le=4.0)
+    detail_radius: float = Field(4.0, ge=0.5, le=64.0)
+    intensity: float = Field(1.0, ge=0.0, le=2.0)
+    temporal: bool = False            # video only: reprojected history + learned blend
+    motion: Literal["automatic", "videotoolbox", "vision", "flow", "zero"] = "automatic"
+    scene_cut_threshold: float = Field(0.3, ge=0.0, le=1.0)
+
+    def model_post_init(self, _context) -> None:
+        if self.profile not in PROFILE_NAMES:
+            raise ValueError(f"profile must be one of {PROFILE_NAMES}")
+
+
+class FrameGen(BaseModel):
+    """DLSS frame generation between consecutive frames (video only)."""
+
+    kind: Literal["fg"] = "fg"
+    mode: Literal["fps", "slowmo"] = "fps"
+    factor: Literal[2, 3, 4, 8, 16] = 2
+    audio: Literal["copy", "stretch", "none"] = "copy"
+
+    def model_post_init(self, _context) -> None:
+        if self.audio == "stretch" and self.mode != "slowmo":
+            raise ValueError("audio 'stretch' only applies to slowmo")
+
+
+class SuperResolution(BaseModel):
+    """RTX VSR High Bitrate Low 2× on the native Metal image path."""
+
+    model_config = {"extra": "forbid"}
+    kind: Literal["vsr"] = "vsr"
+    scale: Literal[2] = 2
+
+
+class DLSSSuperResolution(BaseModel):
+    """Temporal DLSS SR K 2× on the native Metal video path."""
+
+    model_config = {"extra": "forbid"}
+    kind: Literal["sr"] = "sr"
+    scale: Literal[2] = 2
+
+
+Effect = Annotated[Union[NeuralRender, FrameGen, SuperResolution, DLSSSuperResolution], Field(discriminator="kind")]
+EffectList = TypeAdapter(list[Effect])
+
+
+class OutputOptions(BaseModel):
+    codec: Literal["h264", "hevc", "prores"] = "h264"
+    include_audio: bool = True
+    start_frame: int = Field(0, ge=0)
+    frame_limit: int | None = Field(None, gt=0)
+
+MediaKind = Literal["image", "video"]
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
+VIDEO_SUFFIXES = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+
+
+def media_kind(filename: str) -> MediaKind:
+    suffix = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if suffix in IMAGE_SUFFIXES:
+        return "image"
+    if suffix in VIDEO_SUFFIXES:
+        return "video"
+    raise ValueError(f"unsupported file type '{suffix}': images {sorted(IMAGE_SUFFIXES)}, videos {sorted(VIDEO_SUFFIXES)}")
+
+
+def parse_effects(raw, *, kind: MediaKind | None = None) -> list[NeuralRender | FrameGen | SuperResolution | DLSSSuperResolution]:
+    """Validate a list of effect dicts (or models) into models; raises ValueError."""
+    try:
+        values = [e.model_dump() if isinstance(e, BaseModel) else e.copy() if isinstance(e, dict) else e for e in raw]
+        if kind is not None:
+            for effect in values:
+                if isinstance(effect, dict) and effect.get("kind") == "nr":
+                    effect.setdefault("temporal", kind == "video")
+        return EffectList.validate_python(values)
+    except ValidationError as error:
+        raise ValueError("; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in error.errors())) from error
+
+
+def validate_chain(effects: list[NeuralRender | FrameGen | SuperResolution | DLSSSuperResolution], kind: MediaKind) -> None:
+    """The rules a job's effect chain must follow; raises ValueError."""
+    if not effects:
+        raise ValueError("choose at least one effect")
+    if kind == "image" and any(isinstance(e, FrameGen) for e in effects):
+        raise ValueError("frame generation needs a video")
+    if sum(isinstance(e, FrameGen) for e in effects) > 1:
+        raise ValueError("at most one frame generation effect per job")
+    if sum(isinstance(e, NeuralRender) for e in effects) > 1:
+        raise ValueError("at most one neural rendering effect per job")
+    vsr = [e for e in effects if isinstance(e, SuperResolution)]
+    sr = [e for e in effects if isinstance(e, DLSSSuperResolution)]
+    if sr:
+        if kind != "video":
+            raise ValueError("DLSS SR requires video; use RTX VSR for images")
+        if len(sr) + len(vsr) > 1:
+            raise ValueError("at most one super resolution effect per job")
+        if not isinstance(effects[-1], DLSSSuperResolution):
+            raise ValueError("super resolution must be the last effect")
+    if vsr:
+        if kind != "image":
+            raise ValueError("RTX VSR is available for images in the web app")
+        if len(vsr) > 1:
+            raise ValueError("at most one super resolution effect per job")
+        if not isinstance(effects[-1], SuperResolution):
+            raise ValueError("super resolution must be the last effect")
+
+
+def describe_effects(*, mlxdlss_available: bool, fg_weights: bool, nr_weights: bool, vsr_available: bool = False, sr_available: bool = False) -> dict:
+    """What the UI/API can offer right now (field ranges and availability)."""
+    return {
+        "effects": [
+            {
+                "kind": "nr", "name": "Neural rendering", "media": ["image", "video"], "available": nr_weights,
+                "fields": {
+                    "profile": {"type": "choice", "choices": list(PROFILE_NAMES), "default": "standard"},
+                    "processing_scale": {"type": "number", "min": 1.0, "max": 4.0, "default": 1.0},
+                    "detail_strength": {"type": "number", "min": 0.0, "max": 8.0, "default": 1.0},
+                    "colour_strength": {"type": "number", "min": 0.0, "max": 4.0, "default": 1.0},
+                    "detail_radius": {"type": "number", "min": 0.5, "max": 64.0, "default": 4.0},
+                    "intensity": {"type": "number", "min": 0.0, "max": 2.0, "default": 1.0},
+                    "temporal": {"type": "bool", "default": True, "media": ["video"]},
+                    "motion": {"type": "choice", "choices": ["automatic", "videotoolbox", "vision", "flow", "zero"], "default": "automatic"},
+                    "scene_cut_threshold": {"type": "number", "min": 0.0, "max": 1.0, "default": 0.3},
+                },
+            },
+            {
+                "kind": "fg", "name": "Frame generation", "media": ["video"], "available": fg_weights,
+                "fields": {
+                    "mode": {"type": "choice", "choices": ["fps", "slowmo"], "default": "fps"},
+                    "factor": {"type": "choice", "choices": [2, 3, 4, 8, 16], "default": 2},
+                    "audio": {"type": "choice", "choices": ["copy", "stretch", "none"], "default": "copy"},
+                },
+            },
+            {
+                "kind": "vsr", "name": "RTX VSR · Experimental", "media": ["image"], "available": vsr_available,
+                "fields": {"scale": {"type": "choice", "choices": [2], "default": 2}},
+            },
+            {
+                "kind": "sr", "name": "DLSS SR · Experimental", "media": ["video"], "available": sr_available,
+                "fields": {"scale": {"type": "choice", "choices": [2], "default": 2}},
+            },
+        ],
+        "backends": {"torch": True, "mlxdlss": mlxdlss_available},
+    }
