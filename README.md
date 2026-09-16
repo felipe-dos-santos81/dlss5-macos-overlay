@@ -36,6 +36,16 @@ Toolchain, CMake, Ninja, and Python 3.10+ for model preparation.
 From the project directory:
 
 ```sh
+# One command: fetches and verifies the DLL, prepares the model, builds and launches.
+./scripts/setup-and-run.sh
+```
+
+The script downloads the DLL from the public
+[NeuralScreen v1.8.2 release](https://github.com/perseval-BLR/DLSS5-NeuralScreen/releases/tag/v1.8.2),
+verifies it against the checksum recorded in docs/VALIDATION.md and caches it in
+git-ignored Models/. To use a DLL you already have instead:
+
+```sh
 # Supply your own nvngx_dlssnr.dll as the extraction input.
 ./scripts/prepare-model.sh /path/to/nvngx_dlssnr.dll
 

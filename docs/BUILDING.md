@@ -24,6 +24,17 @@ Toolchain component through Xcode.
 
 ## 1. Prepare the model
 
+To fetch the DLL from the public NeuralScreen release and run preparation,
+build and launch in one step:
+
+```sh
+./scripts/setup-and-run.sh
+```
+
+The script verifies the downloaded DLL against the checksum in
+[VALIDATION.md](VALIDATION.md) and caches it in git-ignored `Models/`. The
+manual steps below remain valid.
+
 The repository omits model weights, DLLs and prepared applications. Provide your
 own `nvngx_dlssnr.dll` as input:
 
